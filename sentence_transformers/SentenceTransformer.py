@@ -1158,7 +1158,7 @@ class SentenceTransformer(nn.Sequential, FitMixin, PeftAdapterMixin):
 
         return all_embeddings
 
-    def forward(self, input: dict[str, Tensor], **kwargs) -> dict[str, Tensor]:
+    def forward(self, x: dict[str, Tensor], **kwargs) -> dict[str, Tensor]:
         for module_name, module in self.named_children():
             module_kwargs = {}
             if isinstance(module, Router):
@@ -1172,8 +1172,9 @@ class SentenceTransformer(nn.Sequential, FitMixin, PeftAdapterMixin):
                     for key, value in kwargs.items()
                     if key in module_kwarg_keys or (hasattr(module, "forward_kwargs") and key in module.forward_kwargs)
                 }
-            input = module(input, **module_kwargs)
-        return input
+            x = module(x, **module_kwargs)
+
+        return x
 
     @property
     def similarity_fn_name(self) -> Literal["cosine", "dot", "euclidean", "manhattan"]:

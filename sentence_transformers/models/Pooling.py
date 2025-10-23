@@ -153,17 +153,17 @@ class Pooling(Module):
 
         ## Pooling strategy
         output_vectors = []
-        if self.pooling_mode_cls_token:
+        if False: #self.pooling_mode_cls_token:
             cls_token = features.get("cls_token_embeddings", token_embeddings[:, 0])  # Take first token by default
             output_vectors.append(cls_token)
-        if self.pooling_mode_max_tokens:
+        if False: #self.pooling_mode_max_tokens:
             input_mask_expanded = (
                 attention_mask.unsqueeze(-1).expand(token_embeddings.size()).to(token_embeddings.dtype)
             )
             token_embeddings[input_mask_expanded == 0] = -1e9  # Set padding tokens to large negative value
             max_over_time = torch.max(token_embeddings, 1)[0]
             output_vectors.append(max_over_time)
-        if self.pooling_mode_mean_tokens or self.pooling_mode_mean_sqrt_len_tokens:
+        if False: #self.pooling_mode_mean_tokens or self.pooling_mode_mean_sqrt_len_tokens:
             input_mask_expanded = (
                 attention_mask.unsqueeze(-1).expand(token_embeddings.size()).to(token_embeddings.dtype)
             )
@@ -181,7 +181,7 @@ class Pooling(Module):
                 output_vectors.append(sum_embeddings / sum_mask)
             if self.pooling_mode_mean_sqrt_len_tokens:
                 output_vectors.append(sum_embeddings / torch.sqrt(sum_mask))
-        if self.pooling_mode_weightedmean_tokens:
+        if False: #self.pooling_mode_weightedmean_tokens:
             input_mask_expanded = (
                 attention_mask.unsqueeze(-1).expand(token_embeddings.size()).to(token_embeddings.dtype)
             )
@@ -207,7 +207,7 @@ class Pooling(Module):
 
             sum_mask = torch.clamp(sum_mask, min=1e-9)
             output_vectors.append(sum_embeddings / sum_mask)
-        if self.pooling_mode_lasttoken:
+        if False: #self.pooling_mode_lasttoken:
             bs, seq_len, hidden_dim = token_embeddings.shape
             # attention_mask shape: (bs, seq_len)
             # Get shape [bs] indices of the last token (i.e. the last token for each batch item)
@@ -236,8 +236,9 @@ class Pooling(Module):
             embedding = torch.gather(token_embeddings * input_mask_expanded, 1, gather_indices).squeeze(dim=1)
             output_vectors.append(embedding)
 
-        output_vector = torch.cat(output_vectors, 1)
-        features["sentence_embedding"] = output_vector
+        #output_vector = torch.cat(output_vectors, 1)
+        features["sentence_embedding"] = features["token_embeddings"]
+        features["cls_classifier"] = features["cls_classifier"]
         return features
 
     def get_sentence_embedding_dimension(self) -> int:

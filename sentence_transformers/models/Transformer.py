@@ -261,6 +261,7 @@ class Transformer(InputModule):
         outputs = self.auto_model(**trans_features, **kwargs, return_dict=True)
         token_embeddings = outputs[0]
         features["token_embeddings"] = token_embeddings
+        features["cls_classifier"] = outputs[1]
 
         # If the AutoModel is wrapped with a PeftModelForFeatureExtraction, then it may have added virtual tokens
         # We need to extend the attention mask to include these virtual tokens, or the pooling will fail

@@ -110,7 +110,10 @@ class MultipleNegativesRankingLoss(nn.Module):
 
     def forward(self, sentence_features: Iterable[dict[str, Tensor]], labels: Tensor) -> Tensor:
         # Compute the embeddings and distribute them to anchor and candidates (positive and optionally negatives)
-        embeddings = [self.model(sentence_feature)["sentence_embedding"] for sentence_feature in sentence_features]
+        embeddings = [self.model(sentence_feature) for sentence_feature in sentence_features]
+
+        for emb in embeddings:
+            emb["sentence_embedding"] = emb["sentence_embedding"][:, :8, :]
 
         return self.compute_loss_from_embeddings(embeddings, labels)
 
@@ -124,36 +127,51 @@ class MultipleNegativesRankingLoss(nn.Module):
         Returns:
             Loss value
         """
-        anchors = embeddings[0]  # (batch_size, embedding_dim)
-        candidates = embeddings[1:]  # (1 + num_negatives) tensors of shape (batch_size, embedding_dim)
-        batch_size = anchors.size(0)
-        offset = 0
 
-        if self.gather_across_devices:
-            # Gather the positives and negatives across all devices, with gradients, but not the anchors. We compute
-            # only this device's anchors with all candidates from all devices, such that the backward pass on the document
-            # embeddings can flow back to the original devices.
-            candidates = [all_gather_with_grad(embedding_column) for embedding_column in candidates]
-            # (1 + num_negatives) tensors of shape (batch_size * world_size, embedding_dim)
+        assert len(embeddings) == 3
 
-            # Adjust the offset to account for the gathered candidates
-            if torch.distributed.is_initialized():
-                rank = torch.distributed.get_rank()
-                offset = rank * batch_size
+        # batch_size x 8 x hidden_dim
+        query_embeddings = embeddings[0]["sentence_embedding"]
+        # batch_size x 8
+        query_probs = embeddings[0]["cls_classifier"]
 
-        candidates = torch.cat(candidates, dim=0)
-        # (batch_size * world_size * (1 + num_negatives), embedding_dim)
+        query_probs = nn.Softmax(dim=1)(query_probs)
 
-        # anchor[i] should be most similar to candidates[i], as that is the paired positive,
-        # so the label for anchor[i] is i, but adjusted for the rank offset if gathered across devices
-        range_labels = torch.arange(offset, offset + batch_size, device=anchors.device)
+        # batch_size x hidden_dim
+        query_embeddings = torch.mean(query_embeddings * query_probs[:, :, None], dim = 1)
 
-        # For every anchor, we compute the similarity to all other candidates (positives and negatives),
-        # also from other anchors. This gives us a lot of in-batch negatives.
-        scores = self.similarity_fct(anchors, candidates) * self.scale
-        # (batch_size, world_size * batch_size * (1 + num_negatives))
+        batch_size = query_embeddings.shape[0]
 
-        return self.cross_entropy_loss(scores, range_labels)
+        # batch_size x 8 x hidden_dim
+        positive_embeddings = embeddings[1]["sentence_embedding"]
+        negative_embeddings = embeddings[2]["sentence_embedding"]
+
+        total_loss = None
+
+        for i in range(batch_size):
+            # shape: 8
+            probs = query_probs[i]
+            # 8 x hidden_dim
+            pos_embeddings = positive_embeddings[i]
+            # 1 x hidden_dim
+            pos_embeddings = torch.mean(pos_embeddings * probs[:, None], dim = 0).unsqueeze(0)
+            # batch_size x hidden_dim
+            neg_embeddings = torch.mean(negative_embeddings * probs[None, :, None], dim = 1)
+
+            # (1+batch_size) x hidden_dim, first is positive rest negative
+            candidates = torch.cat((pos_embeddings, neg_embeddings), dim = 0)
+
+            # should be 1 x (1+batch_size)
+            scores = self.similarity_fct(query_embeddings[i].unsqueeze(0), candidates) * self.scale
+
+            if not total_loss:
+                total_loss = self.cross_entropy_loss(scores, torch.arange(1, device=scores.device))
+            else:
+                total_loss += self.cross_entropy_loss(scores, torch.arange(1, device=scores.device))
+
+        total_loss /= batch_size
+        
+        return total_loss
 
     def get_config_dict(self) -> dict[str, Any]:
         return {
