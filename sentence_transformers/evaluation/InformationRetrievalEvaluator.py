@@ -317,12 +317,14 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
             prompt=self.query_prompt,
             output_value=None,
         )
-        query_embeds = [torch.mean(q["sentence_embedding"][:8] * q["cls_classifier"][:, None], dim=0) for q in query_embeddings]
-        cls_classifier = [q["cls_classifier"] for q in query_embeddings]
+        query_embeds = [torch.mean(q["sentence_embedding"][:8] * q["cls_classifier"][:, None], dim=0).half() for q in query_embeddings]
+        cls_classifier = [q["cls_classifier"].half() for q in query_embeddings]
 
         queries_result_list = {}
         for name in self.score_functions:
             queries_result_list[name] = [[] for _ in range(len(query_embeddings))]
+
+        self.corpus = self.corpus[:1000]
 
         # Iterate over chunks of the corpus
         for corpus_start_idx in trange(
@@ -343,7 +345,7 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
             for name, score_function in self.score_functions.items():
 
                 sub_corpus_embeddings = torch.cat([s["sentence_embedding"][:8][None, :, :] for s in sub_corpus_embeddings], dim=0)
-
+                sub_corpus_embeddings = sub_corpus_embeddings.half()
                 # query_embeds is list with elements of shape 768
                 # cls_classifier is list with elements of shape 8
                 # sub_corpus_embeddings is batch_size x 8 x 768
