@@ -315,11 +315,14 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
             encode_fn_name="query",
             prompt_name=self.query_prompt_name,
             prompt=self.query_prompt,
+            output_value=None,
         )
 
         queries_result_list = {}
         for name in self.score_functions:
             queries_result_list[name] = [[] for _ in range(len(query_embeddings))]
+
+        self.corpus = self.corpus[:100000]
 
         # Iterate over chunks of the corpus
         for corpus_start_idx in trange(
@@ -327,21 +330,37 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
         ):
             corpus_end_idx = min(corpus_start_idx + self.corpus_chunk_size, len(self.corpus))
 
-            # Encode chunk of corpus
-            if corpus_embeddings is None:
-                sub_corpus_embeddings = self.embed_inputs(
-                    corpus_model,
-                    self.corpus[corpus_start_idx:corpus_end_idx],
-                    encode_fn_name="document",
-                    prompt_name=self.corpus_prompt_name,
-                    prompt=self.corpus_prompt,
-                )
-            else:
-                sub_corpus_embeddings = corpus_embeddings[corpus_start_idx:corpus_end_idx]
+            sub_corpus_embeddings = self.embed_inputs(
+                corpus_model,
+                self.corpus[corpus_start_idx:corpus_end_idx],
+                encode_fn_name="document",
+                prompt_name=self.corpus_prompt_name,
+                prompt=self.corpus_prompt,
+                output_value=None
+            )
 
             # Compute cosine similarites
             for name, score_function in self.score_functions.items():
-                pair_scores = score_function(query_embeddings, sub_corpus_embeddings)
+
+                query_embeds = [torch.mean(q["sentence_embedding"][:8] * q["cls_classifier"][:, None], dim=0) for q in query_embeddings]
+                cls_classifier = [q["cls_classifier"] for q in query_embeddings]
+
+                sub_corpus_embeddings = torch.cat([s["sentence_embedding"][:8][None, :, :] for s in sub_corpus_embeddings], dim=0)
+
+                # query_embeds is list with elements of shape 768
+                # cls_classifier is list with elements of shape 8
+                # sub_corpus_embeddings is batch_size x 8 x 768
+
+                query_scores = []
+                for query_embd, query_cls in zip(query_embeds, cls_classifier):
+                    # query_embd is 768, query_cls is 8
+                    corpus_embds = torch.mean(sub_corpus_embeddings * query_cls[None, :, None], dim=1)
+                    # corpus_embds is now batch_size x 768 and query_embd is still 768
+                    pair_scores = score_function(query_embd[None, :], corpus_embds)
+                    # pair_scores ought to be 1 x batch_size
+                    query_scores.append(pair_scores)
+
+                pair_scores = torch.cat(query_scores, dim=0)
 
                 # Get top-k values
                 pair_scores_top_k_values, pair_scores_top_k_idx = torch.topk(

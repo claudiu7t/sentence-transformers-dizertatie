@@ -1060,45 +1060,12 @@ class SentenceTransformer(nn.Sequential, FitMixin, PeftAdapterMixin):
         for start_index in trange(0, len(sentences), batch_size, desc="Batches", disable=not show_progress_bar):
             sentences_batch = sentences_sorted[start_index : start_index + batch_size]
             features = self.tokenize(sentences_batch, **kwargs)
-            if self.device.type == "hpu":
-                if "input_ids" in features:
-                    curr_tokenize_len = features["input_ids"].shape
-                    additional_pad_len = 2 ** math.ceil(math.log2(curr_tokenize_len[1])) - curr_tokenize_len[1]
-                    features["input_ids"] = torch.cat(
-                        (
-                            features["input_ids"],
-                            torch.ones((curr_tokenize_len[0], additional_pad_len), dtype=torch.int8),
-                        ),
-                        -1,
-                    )
-                    features["attention_mask"] = torch.cat(
-                        (
-                            features["attention_mask"],
-                            torch.zeros((curr_tokenize_len[0], additional_pad_len), dtype=torch.int8),
-                        ),
-                        -1,
-                    )
-                    if "token_type_ids" in features:
-                        features["token_type_ids"] = torch.cat(
-                            (
-                                features["token_type_ids"],
-                                torch.zeros((curr_tokenize_len[0], additional_pad_len), dtype=torch.int8),
-                            ),
-                            -1,
-                        )
 
             features = batch_to_device(features, device)
             features.update(extra_features)
 
             with torch.no_grad():
                 out_features = self.forward(features, **kwargs)
-                if self.device.type == "hpu":
-                    out_features = copy.deepcopy(out_features)
-
-                if truncate_dim:
-                    out_features["sentence_embedding"] = truncate_embeddings(
-                        out_features["sentence_embedding"], truncate_dim
-                    )
 
                 if output_value == "token_embeddings":
                     embeddings = []
