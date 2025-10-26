@@ -135,8 +135,8 @@ class MultipleNegativesRankingLoss(nn.Module):
         # batch_size x 8
         query_probs = embeddings[0]["cls_classifier"].half()
 
-        per_query_entropies = torch.mean(torch.distributions.Categorical(probs=query_probs).entropy())
-        batchwise_entropies = torch.distributions.Categorical(probs=torch.mean(query_probs, dim=0)).entropy()
+        per_query_entropies = torch.mean(torch.distributions.Categorical(logits=query_probs).entropy())
+        batchwise_entropies = torch.distributions.Categorical(logits=torch.mean(query_probs, dim=0)).entropy()
         
         entropy_loss = per_query_entropies - 0.1*batchwise_entropies
 
