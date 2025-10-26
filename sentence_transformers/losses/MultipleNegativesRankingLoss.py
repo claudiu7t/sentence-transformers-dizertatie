@@ -135,6 +135,13 @@ class MultipleNegativesRankingLoss(nn.Module):
         # batch_size x 8
         query_probs = embeddings[0]["cls_classifier"]
 
+        per_query_entropies = torch.mean(torch.distributions.Categorical(probs=query_probs).entropy())
+        batchwise_entropies = torch.distributions.Categorical(probs=torch.mean(query_probs, dim=0)).entropy()
+        
+        entropy_loss = per_query_entropies - 0.1*batchwise_entropies
+
+        
+
         query_probs = nn.Softmax(dim=1)(query_probs)
 
         # batch_size x hidden_dim
@@ -171,7 +178,7 @@ class MultipleNegativesRankingLoss(nn.Module):
 
         total_loss /= batch_size
         
-        return total_loss
+        return total_loss + entropy_loss
 
     def get_config_dict(self) -> dict[str, Any]:
         return {
