@@ -131,9 +131,9 @@ class MultipleNegativesRankingLoss(nn.Module):
         assert len(embeddings) == 3
 
         # batch_size x 8 x hidden_dim
-        query_embeddings = embeddings[0]["sentence_embedding"]
+        query_embeddings = embeddings[0]["sentence_embedding"].half()
         # batch_size x 8
-        query_probs = embeddings[0]["cls_classifier"]
+        query_probs = embeddings[0]["cls_classifier"].half()
 
         per_query_entropies = torch.mean(torch.distributions.Categorical(probs=query_probs).entropy())
         batchwise_entropies = torch.distributions.Categorical(probs=torch.mean(query_probs, dim=0)).entropy()
@@ -150,8 +150,8 @@ class MultipleNegativesRankingLoss(nn.Module):
         batch_size = query_embeddings.shape[0]
 
         # batch_size x 8 x hidden_dim
-        positive_embeddings = embeddings[1]["sentence_embedding"]
-        negative_embeddings = embeddings[2]["sentence_embedding"]
+        positive_embeddings = embeddings[1]["sentence_embedding"].half()
+        negative_embeddings = embeddings[2]["sentence_embedding"].half()
 
         total_loss = None
 
