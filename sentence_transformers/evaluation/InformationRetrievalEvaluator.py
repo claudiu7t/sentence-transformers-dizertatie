@@ -324,8 +324,6 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
         for name in self.score_functions:
             queries_result_list[name] = [[] for _ in range(len(query_embeddings))]
 
-        self.corpus = self.corpus[:1000]
-
         # Iterate over chunks of the corpus
         for corpus_start_idx in trange(
             0, len(self.corpus), self.corpus_chunk_size, desc="Corpus Chunks", disable=not self.show_progress_bar
